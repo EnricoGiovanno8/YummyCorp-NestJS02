@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, HttpCode, Logger, NotFoundException, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Logger, NotFoundException, Param, ParseIntPipe, Patch, Post, Query, UsePipes, ValidationPipe } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Like, MoreThan, Repository } from "typeorm";
 import { Attendee } from "./attendee.entity";
-import { CreateEventDto } from "./create-event.dto";
+import { CreateEventDto } from "./input/create-event.dto";
 import { Event } from "./event.entity";
-import { UpdateEventDto } from "./update-event.dto";
+import { EventsService } from "./events.service";
+import { UpdateEventDto } from "../events/input/update-event.dto";
+import { ListEvents } from "./input/list.events";
 
 @Controller('events')
 export class EventsController {
@@ -12,14 +14,21 @@ export class EventsController {
 
     constructor(
         @InjectRepository(Event) private readonly repository: Repository<Event>,
-        @InjectRepository(Attendee) private readonly attendeeRepository: Repository<Attendee>
+        @InjectRepository(Attendee) private readonly attendeeRepository: Repository<Attendee>,
+        private readonly eventsService: EventsService
     ) {}
 
     @Get()
-    async findAll() {
-        // this.logger.log('Hit the findAll route')
-        const events = await this.repository.find()
-        // this.logger.debug(`Found ${events.length} events`)
+    @UsePipes(new ValidationPipe({ transform: true }))
+    async findAll(@Query() filter: ListEvents) {
+        const events = await this.eventsService.getEventsWithAttendeeCountFilteredPaginated(
+            filter,
+            {
+                total: true,
+                currentPage: filter.page,
+                limit: 2
+            }
+        )
         return events
     }
 
@@ -63,7 +72,7 @@ export class EventsController {
     async findOne(
         @Param('id', ParseIntPipe) id: number
     ) {
-        const event = await this.repository.findOne(id)
+        const event = await this.eventsService.getEvent(id)
 
         if(!event) {
             throw new NotFoundException()
@@ -105,12 +114,10 @@ export class EventsController {
     async remove(
         @Param('id', ParseIntPipe) id: number
     ) {
-        const event = await this.repository.findOne(id)
+        const result = await this.eventsService.deleteEvent(id)
 
-        if(!event) {
-            throw new NotFoundException()
+        if (result?.affected !== 1) {
+            throw new NotFoundException
         }
-
-        return await this.repository.remove(event)
     }
 }
